@@ -1,5 +1,5 @@
 # insurance-claims-statistical-modeling
-> Projet de statistique des assurances — Master 2 Actuariat
+> Projet de statistique des assurances - Master 2 Actuariat
 
 Modélisation complète de la sinistralité d'un portefeuille de 5 352 ménages assurés, couvrant la tarification a priori/a posteriori, la modélisation de la fréquence et de la sévérité des sinistres, ainsi que l'analyse de la durée de souscription.
 
@@ -28,7 +28,7 @@ Les variables incluent : catégorie socio-professionnelle (PCS), revenu par unit
 
 ## Modèles implémentés
 
-### 1. Tarification a priori — GLM Gamma
+### 1. Tarification a priori - GLM Gamma
 Modélisation de `Sinistre0` (prime agrégée, strictement positive) par un GLM à loi Gamma avec lien log.
 
 ```r
@@ -40,7 +40,7 @@ glm(Sinistre0 ~ pcs + cs + agecat + RUC + region + Acompm + nbpers + Anat + Baut
 
 ---
 
-### 2. Modélisation de la sévérité — Tobit / Hurdle
+### 2. Modélisation de la sévérité - Tobit / Hurdle
 Comparaison de trois approches sur `Sinistre1` (76 % de zéros) :
 
 | Modèle | AIC | Conclusion |
@@ -55,7 +55,7 @@ Le modèle hurdle modélise séparément :
 
 ---
 
-### 3. Modélisation de la fréquence — Binomiale Négative
+### 3. Modélisation de la fréquence - Binomiale Négative
 `NSin` présente une surdispersion marquée (variance = 14,53 >> moyenne = 4,25).
 
 | Modèle | AIC |
@@ -67,7 +67,7 @@ Variables significatives : PCS, âge, taille du ménage, région 5 et région 9.
 
 ---
 
-### 4. Analyse de survie — Kaplan-Meier & Cox
+### 4. Analyse de survie - Kaplan-Meier & Cox
 Modélisation de la durée de souscription en tenant compte de la censure à droite.
 
 **Kaplan-Meier stratifié** — différences significatives selon :
@@ -75,7 +75,7 @@ Modélisation de la durée de souscription en tenant compte de la censure à dro
 - Possession d'un véhicule (p < 0,001)
 - Catégorie d'âge (p < 0,001)
 
-**Modèle de Cox** — concordance = 0,77 :
+**Modèle de Cox** - concordance = 0,77 :
 - Les ménages plus âgés et à revenus élevés résilient moins
 - La taille du ménage augmente fortement le risque de résiliation
 
@@ -125,5 +125,5 @@ Modélisation de la durée de souscription en tenant compte de la censure à dro
 ## Auteur
 
 **Ridge Louigarde**  
-Master 2 — Statistique & Actuariat  
+Master 2 - Statistique & Actuariat  
 2026
