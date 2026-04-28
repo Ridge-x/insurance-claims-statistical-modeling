@@ -1,0 +1,604 @@
+---
+title: "Projet statistique des Assurances"
+author: "Ridge Dery Louigarde"
+date: "2026-03-25"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+  fig.align = 'center',
+  fig.pos = 'H',        # force la figure à rester à sa position exacte
+  out.extra = '',
+  fig.width = 7,        # largeur par défaut
+  fig.height = 4        # hauteur par défaut
+  )
+library(dplyr)
+library(sandwich)
+library(lmtest)
+library(AER)
+library(mhurdle)
+library(sampleSelection)
+library(survival)
+library(survminer)
+```
+
+**0.Récupération des données**
+```{r}
+setwd("C:/Users/ridge/OneDrive/M2 ISEFAR/Semestre 2/Statistique des assurances")
+source("assurance_complet.R")
+```
+
+
+```{r}
+head(dat)
+```
+
+```{r}
+summary(dat)
+```
+
+```{r}
+nrow(dat)
+ncol(dat)
+```
+
+La base de données comporte 5 352 observations et 27 variables. Avant d’entamer la phase de modélisation, plusieurs étapes de nettoyage et de recodage sont nécessaires afin de garantir la cohérence et l’exploitabilité des données.
+
+Premièrement, certaines variables catégorielles, notamment pcs (catégories socio-professionnelles) et cs (catégories sociales de revenu), ne sont pas correctement codées et doivent être reformatées.
+
+La variable reves (revenu du foyer, estimé par autodéclaration) présente des valeurs incohérentes : bien qu’elle soit censée être comprise dans l’intervalle 0 – 70 000, des valeurs extrêmes (jusqu’à 3 416 250) sont observées. Un traitement des valeurs aberrantes est donc nécessaire.
+
+La variable crevpp (catégorie de revenu par personne), actuellement sous forme de chaîne de caractères, doit être transformée en variable catégorielle ordinale codée de 1 à 4.
+
+La variable RUC (revenu par unité de consommation) doit être recalculée ou ajustée en fonction de la composition du ménage, en tenant compte des unités de consommation définies selon l’âge des individus (par exemple : 1 pour un adulte, 0,8 pour un adolescent, etc.). À partir de cette variable, une nouvelle variable quart (quartiles de revenu par unité de consommation) sera créée.
+
+Plusieurs variables doivent également être recodées :
+- Atyph (statut d’occupation du logement) : 1 = Propriétaire, 2 = Locataire, 3 = Non déclaré.
+- agecat (catégorie d’âge du chef de ménage) en 4 classes : 40 = 21–40 ans, 50 = 41–50 ans, 60 = 51–60 ans, 96 = 61–96 ans.
+- Acompm (composition du ménage) : 1 = Couple avec enfant(s), 2 = Couple sans enfant, 3 = Personne seule, 4 = Autre ménage.
+
+La variable nbpers (nombre de personnes dans le ménage) doit être corrigée : bien que le maximum observé soit 10, elle sera recodée en variable plafonnée (4 et plus = 4).
+
+La variable enfants (présence d’enfants) sera transformée en variable binaire : 0 = Aucun enfant, 1 = Au moins un enfant.
+
+De même, la variable Anat (nationalité du ménage) sera recodée comme suit : 1 = Ménage français, 2 = Présence d’au moins un étranger, 9 = Non déclaré.
+
+Enfin, la variable Bauto (possession d’un véhicule) sera transformée en variable binaire : 0 = Aucun véhicule, 1 = Au moins un véhicule.
+
+L’ensemble de ces traitements vise à harmoniser les formats, corriger les incohérences et produire une base propre, prête pour l’analyse statistique et la modélisation.
+
+**1.Nettoyage et recodage des variables**
+
+ **1.1 Correction des valeurs aberrantes (reves)**
+```{r}
+dat$reves <- ifelse(dat$reves > 70000, NA, dat$reves )
+```
+
+**Verification**
+```{r}
+table(dat$reves)
+str(dat$reves)
+```
+
+
+**1.2 Recodage correct de crevpp**
+```{r}
+dat$crevpp <- dplyr::recode(dat$crevpp, 
+              "1er quartile" = 1,
+              "2eme quartile" = 2,
+              "3eme quartile" = 3,
+              "4eme quartile" = 4
+)
+
+dat$crevpp <- as.factor(dat$crevpp)
+```
+
+**Verificatoion**
+```{r}
+table(dat$crevpp)
+str(dat$crevpp)
+```
+
+
+**1.3 Recodage Atyph**
+```{r}
+dat$Atyph <- dplyr::recode(dat$Atyph,
+                    "Proprietaire" = 1,
+                    "Locataire" =2,
+                    .default = 3)
+dat$Atyph <- as.factor(dat$Atyph)
+```
+
+**Verification**
+```{r}
+table(dat$Atyph)
+str(dat$Atyph)
+```
+**1.4 Recodage de agecat**
+```{r}
+dat$agecat <- dplyr::recode(dat$agecat,
+                            "21-40" = 40,
+                            "41-50" = 50,
+                            "51-60" = 60,
+                            "61-96" = 96
+)
+dat$agecat <- as.factor(dat$agecat)
+```
+
+**Verification**
+```{r}
+table(dat$agecat)
+str(dat$agecat)
+```
+**1.5 Recodage de Acompom**
+```{r}
+dat$Acompm <- dplyr::recode(dat$Acompm,
+                            "Couple avec enfant(s)" = 1,
+                            "Couple sans enfant" = 2,
+                            "Personne seule" = 3,
+                            .default = 4)
+dat$Acompm <- as.factor(dat$Acompm)
+```
+
+**Verification**
+```{r}
+table(dat$Acompm)
+str(dat$Acompm)
+```
+**1.6 Recodage nbpers**
+```{r}
+dat$nbpers <- ifelse(dat$nbpers >= 4, 4, dat$nbpers)
+dat$nbpers <- as.factor(dat$nbpers)
+```
+**Verification**
+```{r}
+table(dat$nbpers)
+str(dat$nbpers)
+```
+
+**1.7 Recodage varible binaire enfants**
+```{r}
+class(dat$enfants)
+levels(dat$enfants)
+dat$enfants <- as.character(dat$enfants)
+dat$enfants <- dat$enfants <- ifelse(dat$enfants == "Au - 1 enfant", 1, 0)
+
+dat$enfants <- as.factor(dat$enfants)
+
+```
+**Verification**
+```{r}
+table(dat$enfants)
+str(dat$enfants)
+```
+**1.8 Recodage de Anat**
+```{r}
+class(dat$Anat)
+dat$Anat <- as.character(dat$Anat) 
+```
+```{r}
+dat$Anat <- dplyr::recode(dat$Anat, 
+                          "Menage francais" = 1,
+                          "Au moins une personne etrangere" = 2,
+                          .default = 9
+)                          
+dat$Anat <- as.factor(dat$Anat)
+```
+
+**Verification**
+```{r}
+table(dat$Anat)
+str(dat$Anat)
+```
+**1;9 Recodage Bauto**
+```{r}
+class(dat$Bauto)
+dat$Bauto <- as.character(dat$Bauto)
+```
+```{r}
+dat$Bauto <- ifelse(dat$Bauto == "Pas de vehicule", 0, 1)
+dat$Bauto <- as.factor(dat$Bauto)
+```
+
+**Verification**
+```{r}
+table(dat$Bauto)
+str(dat$Bauto)
+```
+**On met région en facteur et on transforme Bauto et enfants en numerique pour mieux appréhender la modélisation**
+```{r}
+
+dat$region <- factor(as.numeric(dat$region))
+
+dat$enfants <- as.numeric(as.character(dat$enfants))
+dat$Bauto   <- as.numeric(as.character(dat$Bauto))
+```
+
+
+**Verification**
+```{r}
+table(dat$region)
+str(dat$region)
+```
+
+
+**verification complete**
+```{r}
+str(dat)
+summary(dat)
+```
+##  2.Modélisation de la de tarification a priori basée sur la variable Sinistre0 (sans aucun 0)
+
+Avant de modélisaer on regarde la distribution des données de Sinistre0
+```{r, fig.align='center', fig.width=7, fig.height=5, out.width='80%'}
+hist(dat$Sinistre0,
+     breaks = 30,
+     main = "Distribution de Sinistre0",
+     xlab = "Sinistre0")
+
+```
+On remarque que la distribution de sinistre0 est asymétrie a droite. On observe une bimodalité suggérant l'existence de sous-populations.
+
+On peut utiliser la modélisation a priori en GLM Gamma avec lien log pour Sinistre0.
+
+**2.1 Spécification du modèle GLM Gamma( Modèle a priori)**
+```{r}
+# Modèle a priori
+modele_apriori <- glm(
+  Sinistre0 ~ pcs + cs + agecat + RUC + region + Acompm + nbpers + enfants + Anat + Bauto,
+  data = dat,
+  family = Gamma(link = "log")
+)
+summary(modele_apriori)
+```
+Le modèle a priori indique que le revenu par unité de consommation (RUC) ainsi que la composition du ménage (Acompm2, Acompm3, Acompm4) ont un effet statistiquement significatif sur la prime attendue au seuil de 5%.
+
+En revanche, aucune des modalités des variables socio-démographiques telles que la PCS, la catégorie sociale (cs), l’âge (agecat) ou la région n’apparaît significative à ce seuil, y compris la catégorie d’âge ≥ 61 ans (agecat96).
+
+Le coefficient de l’intercept correspond à la valeur de référence du logarithme de la prime attendue pour un individu appartenant à toutes les modalités de référence des variables explicatives.
+
+Par ailleurs, certaines modalités (nbpers4 et enfants) ne sont pas estimées en raison de problèmes de colinéarité (singularités), ce qui indique une redondance d’information avec d’autres variables du modèle.
+
+Ainsi, en dehors du revenu et de la composition du ménage, les autres variables n’ont pas d’effet statistiquement significatif détecté dans ce modèle au seuil de 5%.
+
+**2.2 Calcul des facteurs multiplicatifs**
+
+On recupère que les coefficients significatifs
+```{r}
+# Extraction des coefficients
+coef_apriori <- coef(modele_apriori)
+
+# Transformation exponentielle
+facteurs <- exp(coef_apriori)
+
+# Affichage des coefficients significatifs seulement
+facteurs[c("agecat96","Acompm2","Acompm3","Acompm4","RUC")]
+```
+
+Prime 1% plus faible pour les chefs de ménage ≥ 61 ans par rapport à la catégorie de référence (21–40 ans).
+Prime 82% plus élevée pour les couples sans enfant par rapport à la référence (couple avec enfant).
+Prime 79% plus élevée pour une personne seule.
+Prime 80% plus élevée pour les autres types de ménage.
+
+**2.3 Spécification du modèle GLM Gamma a posteriori**
+```{r}
+# Modèle a posteriori
+modele_aposteriori <- glm(
+  Sinistre0 ~ pcs + cs + agecat + RUC + region + Acompm + nbpers + enfants + Anat + Bauto +
+               Police1 + Police2 + Police3,
+  data = dat,
+  family = Gamma(link = "log")
+)
+
+# Résumé du modèle
+summary(modele_aposteriori)
+```
+La composition du ménage et le revenu par unité de consommation (RUC) sont les principaux déterminants de la prime même après ajout des polices.
+L’effet direct des polices sur Sinistre0 est faible et non significatif, probablement à cause de l’endogénéité ou de la corrélation avec d’autres variables.
+D’un point de vue économique, il est raisonnable de supposer une endogénéité des polices, car les ménages les plus exposés au risque sont susceptibles de souscrire davantage de couvertures. Par conséquent, les coefficients associés aux variables de police doivent être interprétés avec prudence.
+Certaines variables (enfants, nbpers4) ne peuvent pas être estimées à cause de colinéarité.
+
+
+**2.4 Hétéroscédasticité**
+```{r}
+coeftest(modele_aposteriori, vcov = vcovHC(modele_aposteriori))
+```
+Afin de corriger une éventuelle hétéroscédasticité, des erreurs standards robustes ont été utilisées. Les résultats obtenus confirment la robustesse des principaux déterminants identifiés précédemment. En particulier, le revenu par unité de consommation (RUC) ainsi que la composition du ménage restent hautement significatifs. L’effet des variables de police demeure faible et peu significatif, ce qui peut s’expliquer par un problème d’endogénéité.
+
+
+## 3.Calibrage et comparaison des modèles tobit, tobit généralisé ou double hurdle (librairie mhurdle)
+
+Avant de choisir entre sinistre1, sinistre2 ou sinistre 3. Analysons la configuration de ces derniers.
+
+```{r}
+data.frame(
+  Variable = c("Sinistre1", "Sinistre2", "Sinistre3"),
+  Nb_zeros = c(
+    sum(dat$Sinistre1 == 0, na.rm = TRUE),
+    sum(dat$Sinistre2 == 0, na.rm = TRUE),
+    sum(dat$Sinistre3 == 0, na.rm = TRUE)
+  ),
+  Pourcentage = c(
+    mean(dat$Sinistre1 == 0, na.rm = TRUE),
+    mean(dat$Sinistre2 == 0, na.rm = TRUE),
+    mean(dat$Sinistre3 == 0, na.rm = TRUE)
+  )
+)
+```
+
+Nous avons choisi la variable Sinistre1 pour la modélisation, car elle présente une proportion significative d’observations positives (≈24%) tout en conservant un nombre raisonnable d’observations nulles.
+
+Sinistre2 ne comporte que 555 observations positives sur 5352, ce qui est trop faible pour calibrer un modèle Tobit ou hurdle de manière stable.
+Sinistre3, bien que présentant moins de zéros, a une distribution différente et un nombre limité d’observations positives pour estimer les effets des variables explicatives.
+
+Ainsi, Sinistre1 offre un compromis optimal entre suffisamment de données positives pour estimer les montants et un nombre suffisant de zéros pour modéliser correctement la partie “probabilité de sinistre”.
+
+3.1 Tobit sur Sinistre1
+```{r}
+modele_tobit <- tobit(Sinistre1 ~ pcs  + agecat + RUC,
+                      left = 0, data = dat)
+
+summary(modele_tobit)
+
+AIC(modele_tobit)
+
+```
+
+Avec p-value ≈ 1e-13, le modèle Tobit est globalement significatif. La catégorie socio-professionnelle (PCS) influence fortement le sinistre. Contrairement au modèle GLM sur Sinistre0, certaines modalités de PCS deviennent significatives :
+
+Autres sans activité professionnelle (p ≈ 0.6%)
+Cadres et professions intellectuelles supérieures (p ≈ 0.6%)
+Employés (p ≈ 1.3%)
+Ouvriers (p ≈ 3.5%)
+Professions intermédiaires (p ≈ 0.2%)
+
+RUC Estimate = -2.457e-04 ce qui traduit que les ménages plus aisés ont moins de sinistres (ou mieux assurés / plus prudents)
+On trouve un AIC = 14246.49
+
+
+Toutefois, ce modèle repose sur l’hypothèse restrictive qu’un mécanisme unique régit à la fois la probabilité d’occurrence du sinistre et le montant en cas de sinistre, ce qui peut apparaître peu réaliste en contexte assurantiel. Cette remarque est particulièrement pertinente ici, car près de 76% des observations sont égales à zéro, ce qui suggère que le processus de survenue du sinistre et le processus du montant pourraient être différents.
+
+3.2 Tobit généralisé
+
+```{r}
+library(sampleSelection)
+
+modele_tobit_gen <- selection(
+  selection = (Sinistre1 > 0) ~ pcs + agecat,
+  outcome   = Sinistre1 ~ cs + region + nbpers ,
+  data = dat,
+  method = "ml"
+)
+
+summary(modele_tobit_gen)
+
+AIC(modele_tobit_gen)
+
+
+```
+
+
+**Pour l'equjation de sélection** 
+
+Le profil socio-professionnel influence la probabilité de sinistre.
+L’âge réduit la probabilité de sinistre.
+Les ménages plus âgés sont moins exposés au risque.
+
+**Pour l'équation du montant**
+
+Le modèle explique mal le montant du sinistre
+
+
+**Conclusion**
+
+Le paramètre de corrélation rho= -0.06 est non significatif (p-value = 0.564), ce qui indique l’absence de corrélation entre les équations de sélection et de montant. Il n’y a donc pas de biais de sélection détecté.
+
+Par ailleurs, la comparaison des modèles via le critère d’information d’Akaike montre que le modèle Tobit généralisé (AIC ≈ 16710) est moins performant que le Tobit simple (AIC ≈ 14246).
+
+
+Ainsi, le modèle Tobit généralisé n’apporte pas d’amélioration et un modèle plus parcimonieux comme le Tobit standard est préférable.
+
+On peut néanmoins envisager des alternatives comme le modèle double hurdle, qui permet de modéliser séparément la décision de participation et le montant.
+
+**3.3 Modèle hurdle sur Sinistre1**
+
+```{r}
+# Vérifier la distribution des sinistres positifs seulement
+sinistres_pos <- dat$Sinistre1[dat$Sinistre1 > 0]
+summary(sinistres_pos)
+hist(log(sinistres_pos), breaks = 40,
+     main = "Distribution log(Sinistre1 | Sinistre1 > 0)")
+```
+
+L’analyse de la distribution des montants positifs de sinistre montre que la transformation logarithmique ne permet pas d’obtenir une distribution symétrique. L’hypothèse log-normale apparaît donc inadaptée. En revanche, la forte asymétrie à droite plaide en faveur d’une modélisation par une loi Gamma, plus conforme aux propriétés empiriques des données.
+Comme mhurdle ne supporte pas dist = "gamma" nativement on va estimer le Hurdle en deux parties séparées.
+
+```{r}
+#Partie 1 : proba sinistrre (logit ou probit)
+logit_model <- glm(I(Sinistre1 > 0) ~ pcs + agecat,
+                   family = binomial(link = "logit"),
+                   data = dat)
+summary(logit_model)
+
+ #Partie 2 : montant sur sinistres > 0 uniquement
+gamma_model <- glm(Sinistre1 ~ nbpers + cs + region ,
+                   family = Gamma(link = "log"),
+                   data = dat[dat$Sinistre1 > 0, ])
+summary(gamma_model)
+
+
+AIC_hurdle <- AIC(logit_model) + AIC(gamma_model)
+AIC_hurdle
+
+```
+L’AIC du modèle hurdle est de 11736.18, il a été obtenu en sommant les AIC des deux équations AIC , conformément à l’hypothèse d’indépendance entre les processus de fréquence et de gravité. La comparaison avec le modèle Tobit montre que le modèle hurdle offre un meilleur compromis entre qualité d’ajustement et complexité.
+
+La comparaison des modèles met en évidence les limites du modèle Tobit, qui repose sur une hypothèse restrictive d’un mécanisme unique avec un AIC=14246.49 . Le modèle Tobit généralisé, bien que plus flexible, ne révèle pas de corrélation significative entre les processus de sélection et de montant possedant un AIC = 16710.7 plus élévé que celui du Tobit simple. En revanche, le modèle hurdle apparaît comme le plus adapté, en permettant une modélisation distincte de la fréquence et de la gravité des sinistres, conformément à la théorie actuarielle. De plus, il présente une meilleure qualité d’ajustement au regard du critère d’AIC.
+
+Les diagnostics du modèle hurdle (voir Annexe A) révèlent un ajustement globalement satisfaisant, bien que perfectible. Pour la partie logistique, le graphique des résidus vs valeurs ajustées présente la structure en deux bandes attendue pour un modèle binaire, tandis que le QQ-plot met en évidence des queues plus lourdes que la normale, traduisant un pouvoir discriminant modéré du modèle — un indicateur de performance complémentaire tel que l'AUC permettrait de le quantifier précisément. Pour la partie Gamma, la ligne de lissage reste globalement plate, ce qui confirme l'absence de biais systématique ; cependant, plusieurs résidus de déviance supérieurs à 4 signalent la présence d'observations influentes correspondant vraisemblablement à des sinistres de grande ampleur. Par ailleurs, le saut observé en queue droite du QQ-plot logit confirme que ces cas extrêmes ne sont pas pleinement capturés par la distribution supposée, et qu'une modélisation de la queue par une loi de Pareto généralisée constituerait une piste d'amélioration naturelle. Ces limites, inhérentes aux données de sinistres, ne remettent pas en cause la pertinence du modèle hurdle retenu.
+
+## 4.Modélisation du nombre de sinistres nsin des ménages avec les variables disponibles (hors polices, et variable de durée)
+
+**Analyse des données de nsin avant modélisation**
+```{r, fig.align='center', fig.width=7, fig.height=5, out.width='75%'}
+#Diagramme en barres
+
+table_nsin <- table(dat$NSin)
+
+barplot(table_nsin,
+        main = "Fréquence des sinistres",
+        xlab = "Nombre de sinistres",
+        ylab = "Effectif",
+        col = "steelblue")
+
+mean_nsin <- mean(dat$NSin)
+var_nsin  <- var(dat$NSin)
+
+mean_nsin
+var_nsin
+
+mean(dat$NSin == 0)
+```
+La distribution du nombre de sinistres est fortement asymétrique, avec une concentration importante en zéro (environ 26 % des observations). Par ailleurs, la variance (14,53) est nettement supérieure à la moyenne (4,25), ce qui met en évidence une surdispersion.
+
+Ces éléments suggèrent que le modèle de Poisson, qui impose l’égalité entre moyenne et variance, est inadapté dans ce contexte. En revanche, un modèle plus flexible, tel que la binomiale négative, apparaît plus approprié pour capturer l’hétérogénéité des comportements de sinistralité.
+
+Enfin, bien que la proportion de zéros soit significative, elle reste modérée, ce qui ne justifie pas nécessairement le recours à un modèle à inflation de zéros dans un premier temps.
+
+**4.1 Calibration et comparaison des deux modèles (poisson & binomiale négative)**
+```{r}
+# Poisson
+modele_pois <- glm(dat$NSin ~ pcs + cs + agecat + RUC + region + Acompm + nbpers + enfants + Anat + Bauto,
+                   family = poisson(link = "log"),
+                   data = dat)
+
+# Négative binomiale
+library(MASS)
+modele_nb <- glm.nb(dat$NSin ~ pcs + cs + agecat + RUC + region + Acompm + nbpers + enfants + Anat + Bauto,
+                    data = dat)
+
+# Comparaison
+AIC(modele_pois, modele_nb)
+
+```
+
+Le modèle Binomiale négative est clairement préféré pour expliquer le nombre de sinistres, car il s’ajuste mieux à la variance observée et prend en compte la surdispersion structurelle des données de sinistres.
+
+```{r}
+summary(modele_nb)
+```
+Variables significatives : certaines catégories socio‑professionnelles (pcs), groupes d’âge (agecat), nombre de personnes par ménage (nbpers), et certaines régions (region5, region9).
+Le modèle binomiale négative confirme que profil socio-démographique, âge, taille du ménage et type de couverture influencent la fréquence des sinistres. Les coefficients positifs augmentent le nombre attendu de sinistres, tandis que les coefficients négatifs le diminuent. La surdispersion est correctement capturée par ce modèle, contrairement au modèle Poisson.
+parexemple :
+. Les ménages plus âgés ont tendance à avoir moins de sinistres. L’effet s’accentue avec l’âge, ce qui pourrait refléter une conduite plus prudente ou moins de déplacements.
+
+. Étonnamment, un ménage avec 2 ou 3 personnes semble avoir moins de sinistres que la catégorie de référence (1 personne), ce qui pourrait s’expliquer par des comportements partagés ou une assurance combinée qui limite le risque par personne.
+ 
+. Certaines régions montrent un effet significatif sur le nombre de sinistres, reflétant des facteurs locaux de risque
+
+##  5.On modélise la durée de soucription d'un contrat tout en prenant en consideration la variable "censure" qui indique les données censurées sur la durée.
+
+**5.1 Estimateur de Kaplan-Meier**
+
+```{r}
+# Objet de survie (optionnel)
+Surv_obj <- Surv(time = dat$Duree, event = dat$censure)
+
+# Kaplan-Meier global
+km_global <- survfit(Surv(Duree, censure) ~ 1, data = dat)
+
+ggsurvplot(km_global, data = dat, conf.int = TRUE)
+
+```
+
+La courbe de Kaplan-Meier est décroissante et convexe, traduisant une diminution progressive de la probabilité de maintien du contrat au cours du temps. La forme convexe indique un taux de résiliation plus élevé en début de relation contractuelle, qui tend à diminuer avec l’ancienneté. Ce phénomène reflète un effet de sélection, les assurés les moins fidèles quittant rapidement le portefeuille, tandis que les assurés restants présentent une fidélité accrue.
+
+**5.2 Comparaison de plusieurs KP selon le type d'habitat ou le fait de posséder une voiture ou selon l'age.**
+
+**a) Selon le type d’habitat (Anat)**
+```{r}
+km_anat <- survfit(Surv_obj ~ Ahabi, data = dat)
+ggsurvplot(km_anat, pval = TRUE)
+```
+
+La comparaison des courbes de Kaplan-Meier selon le type d’habitation met en évidence des différences significatives, confirmées par le test du log-rank (p-value = 0,0054). Le type d’habitat influence donc la durée de maintien dans le contrat.
+
+En début de contrat, les courbes sont relativement proches, ce qui suggère des comportements de résiliation similaires à court terme. À moyen terme, des écarts apparaissent : les ménages résidant à Paris et dans son agglomération présentent une probabilité de maintien légèrement supérieure, traduisant une fidélité plus élevée, tandis que certaines zones urbaines de taille intermédiaire affichent un risque de résiliation plus important. Les autres catégories se situent dans une position intermédiaire.
+
+À plus long terme, les écarts tendent à se modifier, avec notamment une meilleure persistance observée pour les ménages résidant dans les grandes unités urbaines (plus de 100 000 habitants).
+
+
+**b)Comparaison selon possession auto (Bauto)**
+```{r}
+km_auto <- survfit(Surv_obj ~ Bauto, data = dat)
+ggsurvplot(km_auto, pval = TRUE)
+```
+La p-value (0,0001) met en évidence une différence significative selon la possession d’un véhicule.Les ménages ne possédant pas de véhicule présentent une probabilité de maintien dans le contrat plus élevée, traduisant une plus grande fidélité. À l’inverse, les ménages équipés d’au moins un véhicule apparaissent plus enclins à résilier, probablement en raison d’une plus forte exposition à la concurrence. L’écart entre les courbes est marqué en début de contrat, puis tend à se réduire avec le temps.
+
+**c)Comparaison selon l'age**
+```{r}
+km_age <- survfit(Surv_obj ~ agecat, data = dat)
+ggsurvplot(km_age, pval = TRUE)
+```
+La p-value (0,0001) met en évidence une différence significative entre les classes d’âge en matière de durée de souscription. Les ménages âgés de 61 à 96 ans présentent la probabilité de maintien la plus élevée, traduisant une plus grande fidélité. À l’inverse, les individus âgés de 41 à 50 ans se distinguent par un risque de résiliation plus important, ce qui peut s’expliquer par une période de vie marquée par une plus forte mobilité et des arbitrages plus fréquents entre assureurs. Les autres classes d’âge se situent dans une position intermédiaire. Enfin, les courbes tendent à se rapprocher à long terme, traduisant un effet de sélection des assurés les plus fidèles.
+
+## Conclusion
+L’analyse de survie met en évidence une hétérogénéité significative de la durée de souscription selon les caractéristiques des assurés. Les estimateurs de Kaplan-Meier montrent que certaines variables, notamment l’âge, le type d’habitat et la possession d’un véhicule, influencent significativement la probabilité de maintien du contrat.
+
+Le modèle de Cox confirme ces résultats en identifiant les facteurs influençant le risque de résiliation. En particulier, les assurés plus âgés ou multi-équipés présentent un risque de résiliation plus faible, traduisant une fidélité plus importante.
+
+Ces résultats sont cohérents avec la théorie actuarielle, où la durée de détention du contrat dépend à la fois du profil de risque et du degré d’engagement de l’assuré.
+
+
+**5.3 Modèle de Cox (modèle explicatif)**
+```{r}
+cox_model <- coxph(Surv_obj ~ pcs + agecat + RUC + Ahabi + Bauto + nbpers, data = dat)
+summary(cox_model)
+```
+Le modèle de Cox met en évidence plusieurs déterminants significatifs de la durée de souscription. Le modèle est globalement très significatif (p-value < 2e-16) et présente une bonne qualité d’ajustement, comme en témoigne une concordance élevée (0,781).
+
+L’âge apparaît comme un facteur clé : le risque de résiliation diminue significativement avec l’âge, traduisant une plus grande fidélité des assurés les plus âgés. De même, les ménages ne possédant pas de véhicule présentent un risque de résiliation plus faible, confirmant les résultats observés avec les courbes de Kaplan-Meier.
+
+Le revenu (RUC) a un effet négatif et significatif sur le risque de résiliation, bien que d’ampleur limitée. À l’inverse, la taille du ménage exerce un effet fortement positif : plus le nombre de personnes dans le ménage est élevé, plus le risque de résiliation augmente.
+
+Enfin, certaines catégories socio-professionnelles présentent un risque de résiliation plus élevé, traduisant une hétérogénéité des comportements selon le profil des assurés. Le type d’habitat joue également un rôle, notamment pour les grandes unités urbaines, où le risque de résiliation apparaît plus faible.
+
+## Annexe A : Diagnostics du modèle Hurdle
+Diagnostics de la fréquence (Logit) et gravité(Gamma)
+
+```{r diag_hurdle_logit, echo=FALSE,}
+# Créer une disposition personnalisée : 2 graphiques en haut, 1 en bas
+layout(matrix(c(1,2,3,3), nrow=2, byrow=TRUE))
+
+# Marges
+par(mar=c(4,4,3,2))
+
+# 1. Logit - Résidus vs valeurs ajustées
+resid_logit <- residuals(logit_model, type = "deviance")
+fit_logit <- fitted(logit_model)
+plot(fit_logit, resid_logit,
+     xlab = "Valeurs ajustées (Logit)",
+     ylab = "Résidus de déviance",
+     main = "Logit - Résidus vs valeurs ajustées")
+abline(h = 0, col = "red")
+
+# 2. Logit - QQ-plot
+qqnorm(resid_logit)
+qqline(resid_logit, col = "red")
+title("QQ-plot Logit", line=2.5)
+
+# 3. Gamma - Résidus vs valeurs ajustées (plus large, en bas)
+resid_gamma <- residuals(gamma_model, type = "deviance")
+fit_gamma <- fitted(gamma_model)
+plot(fit_gamma, resid_gamma,
+     xlab = "Valeurs ajustées (Gamma)",
+     ylab = "Résidus de déviance",
+     main = "Gamma - Résidus vs valeurs ajustées")
+abline(h = 0, col = "red")
+```
+
+
+
